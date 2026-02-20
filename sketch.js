@@ -235,9 +235,8 @@ function draw() {
   
   updatePlant();
   drawPlant();
-  drawUI();
   
-  // Draw debug text
+  // Draw debug text only if enabled
   if (showDebugInfo) {
     drawDebugInfo();
   }
@@ -249,17 +248,24 @@ function drawDebugInfo() {
   noStroke();
   textSize(12);
   
-  let yPos = 150;
+  let yPos = 20;
   text("DEBUG INFO:", 15, yPos);
   text("plantStartHeight: " + plantStartHeight, 15, yPos + 20);
   text("Base Y: " + Math.round(plantBaseY), 15, yPos + 35);
+  text("Auto growth: " + (autoGrowth ? "ON" : "OFF"), 15, yPos + 50);
+  text("Plant age: " + nf(plantAge/100, 1, 1) + " days", 15, yPos + 65);
+  text("Leaves: " + leaves.length, 15, yPos + 80);
+  text("Flowers: " + flowers.length, 15, yPos + 95);
+  text("Soil moisture: " + sensorData.soilMoisture, 15, yPos + 110);
+  text("O2: " + sensorData.oxygen, 15, yPos + 125);
   
   // Key controls help
   text("CONTROLS:", width - 150, 20);
-  text("8/9: Plant height", width - 150, 40);
-  text("7: Toggle debug", width - 150, 55);
-  text("R: Reset plant", width - 150, 70);
-  text("SPACE: Grow", width - 150, 85);
+  text("SPACE: Grow", width - 150, 40);
+  text("R: Reset plant", width - 150, 55);
+  text("A: Toggle auto growth", width - 150, 70);
+  text("8/9: Plant height", width - 150, 85);
+  text("7: Toggle debug", width - 150, 100);
   
   pop();
 }
@@ -515,81 +521,6 @@ function drawFallbackFlower(flower) {
   ellipse(0, 0, 12 * flower.size, 12 * flower.size);
   
   pop();
-}
-
-function drawUI() {
-  fill(0, 0, 0, 150);
-  noStroke();
-  rect(5, 5, 220, 120, 5);
-  
-  fill(255);
-  stroke(0);
-  strokeWeight(1);
-  textSize(12);
-  
-  text("Planted: 11 Nov 2025", 15, 25);
-  
-  let serialStatus;
-  let serialColor;
-  
-  if (serialConnected) {
-    if (millis() - lastDataTime < 5000) {
-      serialStatus = "Arduino Connected";
-      serialColor = color(100, 255, 100);
-    } else {
-      serialStatus = "No recent data";
-      serialColor = color(255, 200, 50);
-    }
-  } else {
-    serialStatus = "Click Connect Button";
-    serialColor = color(255, 200, 50);
-  }
-  
-  fill(serialColor);
-  text(serialStatus, 15, 45);
-  
-  let status = "Seed";
-  if (plant.length > 3) status = "Sprout";
-  if (plant.length > 10) status = "Sapling";
-  if (leaves.length > 8) status = "Growing";
-  if (flowers.length > 0) status = "Flowering";
-  if (plant.length > 60) status = "Mature";
-  
-  fill(255);
-  text("Status: " + status, 15, 65);
-  text("Age: " + nf(plantAge/100, 1, 1) + " days", 15, 85);
-  text("Leaves: " + leaves.length, 15, 105);
-  text("Flowers: " + flowers.length, 15, 125);
-  
-  let rightColumnX = 135;
-  text("Soil: " + sensorData.soilMoisture, rightColumnX, 65);
-  text("O2: " + sensorData.oxygen, rightColumnX, 85);
-  
-  let needsMessage = "Happy";
-  let needsColor = color(100, 255, 100);
-  
-  if (sensorData.soilMoisture < 300) {
-    needsMessage = "Thirsty";
-    needsColor = color(255, 100, 100);
-  } else if (sensorData.soilMoisture > 700) {
-    needsMessage = "Too wet";
-    needsColor = color(255, 200, 50);
-  }
-  
-  fill(needsColor);
-  text(needsMessage, rightColumnX, 45);
-  
-  noStroke();
-  fill(100);
-  rect(rightColumnX, 95, 80, 8);
-  fill(50, 200, 50);
-  let moistureWidth = map(sensorData.soilMoisture, 200, 800, 0, 80);
-  moistureWidth = constrain(moistureWidth, 0, 80);
-  rect(rightColumnX, 95, moistureWidth, 8);
-  
-  fill(255);
-  textSize(10);
-  text("Moisture", rightColumnX, 115);
 }
 
 class StemSegment {
