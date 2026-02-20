@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fuchsia Plant Simulation - Grown from Bottom</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+        }
+        
+        #info-panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        #info-panel a {
+            color: #ff99ff;
+            pointer-events: auto;
+        }
+        
+        #controls-panel {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            z-index: 10;
+        }
+        
+        #serial-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 14px;
+            z-index: 10;
+            pointer-events: auto;
+            border: 1px solid #444;
+        }
+        
+        #connect-btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+            font-weight: bold;
+        }
+        
+        #connect-btn:hover {
+            background: #45a049;
+        }
+        
+        #connect-btn:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+        
+        #status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-left: 10px;
+            background-color: #ff4444;
+        }
+        
+        #status-indicator.connected {
+            background-color: #44ff44;
+        }
+        
+        #status-text {
+            margin-left: 5px;
+        }
+        
+        .note {
+            font-size: 11px;
+            color: #aaa;
+            margin-top: 5px;
+        }
+        
+        .key {
+            display: inline-block;
+            background: #333;
+            border: 1px solid #555;
+            border-radius: 3px;
+            padding: 2px 6px;
+            margin: 0 2px;
+            font-family: monospace;
+        }
+        
+        h3 {
+            margin: 0 0 10px 0;
+            color: #ff99ff;
+        }
+        
+        hr {
+            border: none;
+            border-top: 1px solid #444;
+            margin: 10px 0;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@serialport/parser-readline@9.2.4/dist/index.min.js"></script>
+    <script src="sketch.js"></script>
+</head>
+<body>
+    <div id="serial-panel">
+        <h3>🌿 Fuchsia Plant Monitor</h3>
+        <div>
+            <button id="connect-btn" onclick="connectSerial()">🔌 Connect Arduino</button>
+            <span id="status-indicator"></span>
+            <span id="status-text">Disconnected</span>
+        </div>
+        <div class="note">
+            <strong>Sensor readings:</strong> Soil moisture, O2, Heart rate<br>
+            <strong>Click anywhere</strong> to water the plant
+        </div>
+    </div>
+    
+    <div id="info-panel">
+        <strong>🌺 Fuchsia Plant</strong><br>
+        Planted: November 11, 2025<br>
+        <a href="#" onclick="resetPlant()">Reset Plant</a> | 
+        <a href="#" onclick="toggleDebug()">Toggle Debug</a>
+    </div>
+    
+    <div id="controls-panel">
+        <strong>⌨️ Keyboard Controls</strong><br>
+        <span class="key">SPACE</span> Manual growth<br>
+        <span class="key">R</span> Reset plant<br>
+        <span class="key">A</span> Toggle auto growth<br>
+        <span class="key">8/9</span> Adjust plant height<br>
+        <span class="key">7</span> Toggle debug info
+    </div>
+
+    <script>
+        // Serial port variables
+        let port;
+        let reader;
+        let serialWriter;
+        let serialStatus = document.getElementById('status-text');
+        let statusIndicator = document.getElementById('status-indicator');
+        
+        // Check if Web Serial API is supported
+        if (!navigator.serial) {
+            document.getElementById('connect-btn').disabled = true;
+            serialStatus.innerText = 'Web Serial API not supported';
+            statusIndicator.style.backgroundColor = '#ff4444';
+        }
+        
+        async function connectSerial() {
+            try {
+                // Request a port and open a connection
+                port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 9600 });
+                
+                // Setup serial reader
+                const decoder = new TextDecoderStream();
+                const inputDone = port.readable.pipeTo(decoder.writable);
+                const inputStream = decoder.readable;
+                reader = inputStream.getReader();
+                
+                // Setup serial writer
+                const encoder = new TextEncoderStream();
+                const writableStreamClosed = encoder.readable.pipeTo(port.writable);
+                serialWriter = encoder.writable.getWriter();
+                
+                // Update UI
+                serialStatus.innerText = 'Connected';
+                statusIndicator.className = 'connected';
+                document.getElementById('connect-btn').innerHTML = '🔌 Disconnect';
+                document.getElementById('connect-btn').onclick = disconnectSerial;
+                
+                // Start reading data
+                readSerialData();
+                
+            } catch (error) {
+                console.error('Error connecting to serial port:', error);
+                serialStatus.innerText = 'Connection failed';
+                statusIndicator.style.backgroundColor = '#ff4444';
+            }
+        }
+        
+        async function disconnectSerial() {
+            try {
+                if (reader) {
+                    await reader.cancel();
+                    reader = null;
+                }
+                if (serialWriter) {
+                    await serialWriter.close();
+                    serialWriter = null;
+                }
+                if (port) {
+                    await port.close();
+                    port = null;
+                }
+                
+                // Update UI
+                serialStatus.innerText = 'Disconnected';
+                statusIndicator.className = '';
+                document.getElementById('connect-btn').innerHTML = '🔌 Connect Arduino';
+                document.getElementById('connect-btn').onclick = connectSerial;
+                
+            } catch (error) {
+                console.error('Error disconnecting:', error);
+            }
+        }
+        
+        async function readSerialData() {
+            try {
+                while (reader) {
+                    const { value, done } = await reader.read();
+                    if (done) {
+                        break;
+                    }
+                    if (value && window.handleSerialData) {
+                        window.handleSerialData(value);
+                    }
+                }
+            } catch (error) {
+                console.error('Error reading serial data:', error);
+                // Try to reconnect
+                if (port) {
+                    await disconnectSerial();
+                }
+            } finally {
+                if (reader) {
+                    reader.releaseLock();
+                }
+            }
+        }
+        
+        // Helper functions that can be called from HTML
+        function resetPlant() {
+            if (window.keyPressed) {
+                // Simulate 'R' key press
+                window.keyPressed({ key: 'r' });
+            }
+        }
+        
+        function toggleDebug() {
+            if (window.keyPressed) {
+                // Simulate '7' key press
+                window.keyPressed({ key: '7' });
+            }
+        }
+        
+        // Clean up on page unload
+        window.addEventListener('beforeunload', function() {
+            if (port) {
+                disconnectSerial();
+            }
+        });
+        
+        // Water plant when clicking anywhere on canvas
+        document.addEventListener('click', function(e) {
+            // Don't trigger if clicking on buttons or UI elements
+            if (e.target.tagName === 'BUTTON' || e.target.tagName === 'A' || e.target.closest('#serial-panel')) {
+                return;
+            }
+            
+            if (window.mousePressed) {
+                // Simulate mouse press on canvas
+                window.mousePressed();
+            }
+        });
+        
+        // Handle keyboard shortcuts globally
+        document.addEventListener('keydown', function(e) {
+            // Don't interfere with typing in inputs
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                return;
+            }
+            
+            // Pass key events to p5.js
+            if (window.keyPressed) {
+                // Prevent default for control keys
+                if (e.key === ' ' || e.key === 'r' || e.key === 'R' || 
+                    e.key === 'a' || e.key === 'A' || e.key === '7' ||
+                    e.key === '8' || e.key === '9') {
+                    e.preventDefault();
+                }
+                window.keyPressed({ key: e.key });
+            }
+        });
+        
+        console.log('🌱 Fuchsia Plant Simulation loaded - Plant grows from bottom!');
+    </script>
+</body>
+</html>
